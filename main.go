@@ -83,6 +83,15 @@ func initLog() {
 }
 
 const maxDlCount = 16
+const sparklineWidth = 40
+
+func pushSample(samples []float64, v float64) []float64 {
+	samples = append(samples, v)
+	if len(samples) > sparklineWidth {
+		samples = samples[len(samples)-sparklineWidth:]
+	}
+	return samples
+}
 
 func run(cmd *cobra.Command, args []string) {
 	if showVersion {
@@ -138,6 +147,7 @@ func calculateBandwidth(urls []string) (err error) {
 	bytesToRead := uint64(0)
 	completed := uint64(0)
 	var latency time.Duration
+	var samples []float64
 
 	for i := uint64(0); i < count; i++ {
 		// Create the HTTP request
@@ -207,21 +217,25 @@ func calculateBandwidth(urls []string) (err error) {
 				}
 				fmt.Println(string(encoded))
 			case showProgress:
-				fmt.Printf("\r%s - %s",
+				samples = pushSample(samples, bandwidth)
+				fmt.Printf("\r%s  %s  %s\n\n",
 					formatSpeed(bandwidth),
-					format.Percent(primaryBandwidthReader.BytesRead(), bytesToRead))
-				fmt.Printf("  \n")
-				fmt.Printf("Latency: %.1f ms\n", float64(latency.Microseconds())/1000)
-				fmt.Printf("Completed in %.1f seconds\n", bandwidthMeter.Duration().Seconds())
+					format.Percent(primaryBandwidthReader.BytesRead(), bytesToRead),
+					format.Sparkline(samples))
+				fmt.Printf("  %-10s %.1f ms\n", "Latency", float64(latency.Microseconds())/1000)
+				fmt.Printf("  %-10s %.1f s\n", "Duration", bandwidthMeter.Duration().Seconds())
 			default:
 				fmt.Printf("%s\n", formatSpeed(bandwidth))
 			}
 			return nil
 		case <-time.After(100 * time.Millisecond):
+			bandwidth := bandwidthMeter.Bandwidth()
 			if showProgress {
-				fmt.Printf("\r%s - %s",
-					formatSpeed(bandwidthMeter.Bandwidth()),
-					format.Percent(primaryBandwidthReader.BytesRead(), bytesToRead))
+				samples = pushSample(samples, bandwidth)
+				fmt.Printf("\r%s  %s  %s",
+					formatSpeed(bandwidth),
+					format.Percent(primaryBandwidthReader.BytesRead(), bytesToRead),
+					format.Sparkline(samples))
 			}
 		}
 	}

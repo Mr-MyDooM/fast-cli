@@ -1,7 +1,7 @@
 # fast-cli
-[![CI](https://img.shields.io/github/actions/workflow/status/gesquive/fast-cli/ci.yml?branch=master&style=flat-square)](https://github.com/gesquive/fast-cli/actions/workflows/ci.yml)
-[![Software License](https://img.shields.io/badge/License-MIT-orange.svg?style=flat-square)](https://github.com/gesquive/fast-cli/blob/master/LICENSE)
-[![GoDoc](https://img.shields.io/badge/godoc-reference-blue.svg?style=flat-square)](https://godoc.org/github.com/gesquive/fast-cli)
+[![CI](https://img.shields.io/github/actions/workflow/status/Mr-MyDooM/fast-cli/ci.yml?branch=master&style=flat-square)](https://github.com/Mr-MyDooM/fast-cli/actions/workflows/ci.yml)
+[![Software License](https://img.shields.io/badge/License-MIT-orange.svg?style=flat-square)](https://github.com/Mr-MyDooM/fast-cli/blob/master/LICENSE)
+[![GoDoc](https://img.shields.io/badge/godoc-reference-blue.svg?style=flat-square)](https://godoc.org/github.com/Mr-MyDooM/fast-cli)
 
 fast-cli estimates your current internet download speed by performing a series of downloads from Netflix's fast.com servers.
 
@@ -10,12 +10,24 @@ Originally created by [Gus Esquivel](https://github.com/gesquive) ([gesquive/fas
 ## Installing
 
 ### Compile
-This project requires go 1.6+ to compile. Just run `go get -u github.com/gesquive/fast-cli` and the executable should be built for you automatically in your `$GOPATH`.
+This project requires go 1.22+ to compile.
+
+```console
+git clone https://github.com/Mr-MyDooM/fast-cli.git
+cd fast-cli
+make build
+```
+
+Or install directly with go:
+
+```console
+go install github.com/Mr-MyDooM/fast-cli@latest
+```
 
 Optionally you can run `make install` to build and copy the executable to `/usr/local/bin/` with correct permissions.
 
 ### Download
-Alternately, you can download the latest release for your platform from [github](https://github.com/gesquive/fast-cli/releases).
+Alternately, you can download the latest release for your platform from [github](https://github.com/Mr-MyDooM/fast-cli/releases).
 
 Once you have an executable, make sure to copy it somewhere on your path like `/usr/local/bin` or `C:/Program Files/`.
 If on a \*nix/mac system, make sure to run `chmod +x /path/to/fast-cli`.
@@ -45,7 +57,7 @@ Hidden Flags:
 
 ## Documentation
 
-This documentation can be found at github.com/gesquive/fast-cli
+This documentation can be found at github.com/Mr-MyDooM/fast-cli
 
 ## License
 

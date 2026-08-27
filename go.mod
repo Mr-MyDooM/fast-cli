@@ -1,6 +1,6 @@
-module github.com/gesquive/fast-cli
+module github.com/Mr-MyDooM/fast-cli
 
-go 1.26.6
+go 1.22.0
 
 require (
 	github.com/dustin/go-humanize v1.0.1

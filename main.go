@@ -10,9 +10,9 @@ import "time"
 
 import "github.com/spf13/cobra"
 import "github.com/gesquive/cli"
-import "github.com/gesquive/fast-cli/fast"
-import "github.com/gesquive/fast-cli/format"
-import "github.com/gesquive/fast-cli/meters"
+import "github.com/Mr-MyDooM/fast-cli/fast"
+import "github.com/Mr-MyDooM/fast-cli/format"
+import "github.com/Mr-MyDooM/fast-cli/meters"
 
 var version = "v0.2.10"
 var dirty = ""
@@ -46,7 +46,7 @@ func main() {
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute(version string) {
 	displayVersion = version
-	RootCmd.SetHelpTemplate(fmt.Sprintf("%s\nVersion:\n  github.com/gesquive/%s\n",
+	RootCmd.SetHelpTemplate(fmt.Sprintf("%s\nVersion:\n  github.com/Mr-MyDooM/%s\n",
 		RootCmd.HelpTemplate(), displayVersion))
 	if err := RootCmd.Execute(); err != nil {
 		fmt.Println(err)
@@ -61,11 +61,13 @@ func init() {
 	RootCmd.PersistentFlags().BoolVarP(&simpleProgress, "simple", "s", false, "Only display the result, no dynamic progress bar")
 	RootCmd.PersistentFlags().BoolVar(&showVersion, "version", false, "Display the version number and exit")
 	RootCmd.PersistentFlags().BoolVarP(&logDebug, "debug", "D", false, "Write debug messages to console")
-	RootCmd.PersistentFlags().Uint64VarP(&dlCount, "count", "c", 3, "Number of parallel connections to use")
+	RootCmd.PersistentFlags().Uint64VarP(&dlCount, "count", "c", 3, "Number of parallel connections to use (1-16)")
 	RootCmd.PersistentFlags().BoolVarP(&showBytes, "bytes", "b", false, "Display speed in bytes per second instead of bits per second")
 	RootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "Output the result as JSON")
 
-	RootCmd.PersistentFlags().MarkHidden("debug")
+	if err := RootCmd.PersistentFlags().MarkHidden("debug"); err != nil {
+		panic(err)
+	}
 }
 
 func initLog() {
@@ -80,10 +82,16 @@ func initLog() {
 	}
 }
 
+const maxDlCount = 16
+
 func run(cmd *cobra.Command, args []string) {
 	if showVersion {
 		cli.Infoln(displayVersion)
 		os.Exit(0)
+	}
+	if dlCount == 0 || dlCount > maxDlCount {
+		fmt.Fprintf(os.Stderr, "count must be between 1 and %d\n", maxDlCount)
+		os.Exit(1)
 	}
 	fast.UseHTTPS = !notHTTPS
 	urls, err := fast.GetDlUrls(dlCount)
@@ -121,7 +129,7 @@ func formatSpeed(bytesPerSec float64) string {
 }
 
 func calculateBandwidth(urls []string) (err error) {
-	client := &http.Client{}
+	client := &http.Client{Timeout: 60 * time.Second}
 	count := uint64(len(urls))
 
 	primaryBandwidthReader := meters.BandwidthMeter{}
@@ -162,10 +170,10 @@ func calculateBandwidth(urls []string) (err error) {
 			cli.Debugf("Download Size=%d\n", bytesToRead)
 
 			tapMeter := io.TeeReader(response.Body, &primaryBandwidthReader)
-			go asyncCopy(i, ch, &bandwidthMeter, tapMeter)
+			go asyncCopy(ch, &bandwidthMeter, tapMeter)
 		} else {
 			// Start reading
-			go asyncCopy(i, ch, &bandwidthMeter, response.Body)
+			go asyncCopy(ch, &bandwidthMeter, response.Body)
 		}
 
 	}
@@ -220,12 +228,10 @@ func calculateBandwidth(urls []string) (err error) {
 }
 
 type copyResults struct {
-	index        uint64
-	bytesWritten uint64
-	err          error
+	err error
 }
 
-func asyncCopy(index uint64, channel chan *copyResults, writer io.Writer, reader io.Reader) {
-	bytesWritten, err := io.Copy(writer, reader)
-	channel <- &copyResults{index, uint64(bytesWritten), err}
+func asyncCopy(channel chan *copyResults, writer io.Writer, reader io.Reader) {
+	_, err := io.Copy(writer, reader)
+	channel <- &copyResults{err}
 }

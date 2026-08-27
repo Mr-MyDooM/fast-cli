@@ -59,16 +59,16 @@ install: build ## Install the binaries on this computer
 	install -m 755 ./${BIN_NAME} ${DESTDIR}/usr/local/bin/${BIN_NAME}
 
 .PHONY: deps
-deps: glide ## Download project dependencies
-	glide install
+deps: ## Download project dependencies
+	${GOCC} mod download
 
 .PHONY: test
-test: glide ## Run golang tests
-	${GOCC} test $(shell glide novendor)
+test: ## Run golang tests
+	${GOCC} test ./...
 
 .PHONY: bench
-bench: glide ## Run golang benchmarks
-	${GOCC} test -benchmem -bench=. $(shell glide novendor)
+bench: ## Run golang benchmarks
+	${GOCC} test -benchmem -bench=. ./...
 
 .PHONY: clean
 clean: ## Clean the directory tree of artifacts
@@ -106,11 +106,6 @@ link: $(INSTALL_PATH) ## Symlink this project into the GOPATH
 $(INSTALL_PATH):
 	@mkdir -p `dirname $(INSTALL_PATH)`
 	@ln -s $(PWD) $(INSTALL_PATH) >/dev/null 2>&1
-
-.PHONY: glide
-glide:
-	@command -v glide >/dev/null 2>&1 || \
-	echo "Installing glide" && ${GOCC} get -u github.com/Masterminds/glide
 
 .PHONY: gox
 gox:

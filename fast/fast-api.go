@@ -11,8 +11,11 @@ import "github.com/gesquive/cli"
 var UseHTTPS = true
 
 // GetDlUrls returns a list of urls to the fast api downloads
-func GetDlUrls(urlCount uint64) (urls []string) {
-	token := getFastToken()
+func GetDlUrls(urlCount uint64) (urls []string, err error) {
+	token, err := getFastToken()
+	if err != nil {
+		return nil, err
+	}
 
 	httpProtocol := "https"
 	if !UseHTTPS {
@@ -21,10 +24,12 @@ func GetDlUrls(urlCount uint64) (urls []string) {
 
 	url := fmt.Sprintf("%s://api.fast.com/netflix/speedtest?https=%t&token=%s&urlCount=%d",
 		httpProtocol, UseHTTPS, token, urlCount)
-	// fmt.Printf("url=%s\n", url)
 	cli.Debug("getting url list from %s", url)
 
-	jsonData, _ := getPage(url)
+	jsonData, err := getPage(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch fast.com url list: %w", err)
+	}
 
 	re := regexp.MustCompile("(?U)\"url\":\"(.*)\"")
 	reUrls := re.FindAllStringSubmatch(jsonData, -1)
@@ -35,7 +40,7 @@ func GetDlUrls(urlCount uint64) (urls []string) {
 		cli.Debug(" - %s", arr[1])
 	}
 
-	return
+	return urls, nil
 }
 
 // GetDefaultURL returns the fallback download URL
@@ -48,34 +53,43 @@ func GetDefaultURL() (url string) {
 	return
 }
 
-func getFastToken() (token string) {
+func getFastToken() (token string, err error) {
 	baseURL := "https://fast.com"
 	if !UseHTTPS {
 		baseURL = "http://fast.com"
 	}
-	fastBody, _ := getPage(baseURL)
+	fastBody, err := getPage(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch %s: %w", baseURL, err)
+	}
 
 	// Extract the app script url
 	re := regexp.MustCompile("app-.*\\.js")
 	scriptNames := re.FindAllString(fastBody, 1)
+	if len(scriptNames) == 0 {
+		return "", fmt.Errorf("could not find fast.com app script, page layout may have changed")
+	}
 
 	scriptURL := fmt.Sprintf("%s/%s", baseURL, scriptNames[0])
 	cli.Debug("trying to get fast api token from %s", scriptURL)
 
 	// Extract the token
-	scriptBody, _ := getPage(scriptURL)
+	scriptBody, err := getPage(scriptURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch %s: %w", scriptURL, err)
+	}
 
 	re = regexp.MustCompile("token:\"[[:alpha:]]*\"")
 	tokens := re.FindAllString(scriptBody, 1)
 
-	if len(tokens) > 0 {
-		token = tokens[0][7 : len(tokens[0])-1]
-		cli.Debug("token found: %s", token)
-	} else {
-		cli.Warn("no token found")
+	if len(tokens) == 0 {
+		return "", fmt.Errorf("no token found, fast.com script format may have changed")
 	}
 
-	return
+	token = tokens[0][7 : len(tokens[0])-1]
+	cli.Debug("token found: %s", token)
+
+	return token, nil
 }
 
 func getPage(url string) (contents string, err error) {

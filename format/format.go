@@ -3,10 +3,16 @@ package format
 import "fmt"
 import "github.com/dustin/go-humanize"
 
-// BitsPerSec formats a byte count
+// BitsPerSec formats a byte count as a bits-per-second rate
 func BitsPerSec(bytes float64) string {
 	prettySize, prettyUnit := humanize.ComputeSI(bytes * 8)
 	return fmt.Sprintf("%7.2f %sbps", prettySize, prettyUnit)
+}
+
+// BytesPerSec formats a byte count as a bytes-per-second rate
+func BytesPerSec(bytes float64) string {
+	prettySize, prettyUnit := humanize.ComputeSI(bytes)
+	return fmt.Sprintf("%7.2f %sB/s", prettySize, prettyUnit)
 }
 
 // Bytes formats a byte count

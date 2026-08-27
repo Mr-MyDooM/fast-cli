@@ -30,6 +30,9 @@ func (br *BandwidthMeter) Start() {
 // Bandwidth returns the current bandwidth
 func (br *BandwidthMeter) Bandwidth() (bytesPerSec float64) {
 	deltaSecs := br.lastRead.Sub(br.start).Seconds()
+	if deltaSecs <= 0 {
+		return 0
+	}
 	bytesPerSec = float64(br.bytesRead) / deltaSecs
 	return
 }

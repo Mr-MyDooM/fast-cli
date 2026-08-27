@@ -1,10 +1,11 @@
 # fast-cli
-[![Travis CI](https://img.shields.io/travis/gesquive/fast-cli/master.svg?style=flat-square)](https://travis-ci.org/gesquive/fast-cli)
+[![CI](https://img.shields.io/github/actions/workflow/status/gesquive/fast-cli/ci.yml?branch=master&style=flat-square)](https://github.com/gesquive/fast-cli/actions/workflows/ci.yml)
 [![Software License](https://img.shields.io/badge/License-MIT-orange.svg?style=flat-square)](https://github.com/gesquive/fast-cli/blob/master/LICENSE)
 [![GoDoc](https://img.shields.io/badge/godoc-reference-blue.svg?style=flat-square)](https://godoc.org/github.com/gesquive/fast-cli)
 
 fast-cli estimates your current internet download speed by performing a series of downloads from Netflix's fast.com servers.
 
+Originally created by [Gus Esquivel](https://github.com/gesquive) ([gesquive/fast-cli](https://github.com/gesquive/fast-cli)). This fork modernizes the toolchain (go modules, GitHub Actions) and adds new flags (`--count`, `--bytes`, `--json`) plus latency reporting.
 
 ## Installing
 
@@ -28,10 +29,13 @@ Usage:
   fast-cli [flags]
 
 Flags:
-  -h, --help       help for fast-cli
-  -n, --no-https   Do not use HTTPS when connecting
-  -s, --simple     Only display the result, no dynamic progress bar
-      --version    Display the version number and exit
+  -b, --bytes        Display speed in bytes per second instead of bits per second
+  -c, --count uint   Number of parallel connections to use (default 3)
+  -h, --help         help for fast-cli
+      --json         Output the result as JSON
+  -n, --no-https     Do not use HTTPS when connecting
+  -s, --simple       Only display the result, no dynamic progress bar
+      --version      Display the version number and exit
 ```
 Optionally, a hidden debug flag is available in case you need additional output.
 ```console

@@ -3,6 +3,7 @@ package main
 import "os"
 import "fmt"
 import "io"
+import "encoding/json"
 import "net/http"
 import "strconv"
 import "time"
@@ -22,8 +23,11 @@ var logDebug bool
 var notHTTPS bool
 var simpleProgress bool
 var showVersion bool
+var dlCount uint64
+var showBytes bool
+var jsonOutput bool
 
-//RootCmd is the only command
+// RootCmd is the only command
 var RootCmd = &cobra.Command{
 	Use:   "fast-cli",
 	Short: "Estimates your current internet download speed",
@@ -57,9 +61,11 @@ func init() {
 	RootCmd.PersistentFlags().BoolVarP(&simpleProgress, "simple", "s", false, "Only display the result, no dynamic progress bar")
 	RootCmd.PersistentFlags().BoolVar(&showVersion, "version", false, "Display the version number and exit")
 	RootCmd.PersistentFlags().BoolVarP(&logDebug, "debug", "D", false, "Write debug messages to console")
+	RootCmd.PersistentFlags().Uint64VarP(&dlCount, "count", "c", 3, "Number of parallel connections to use")
+	RootCmd.PersistentFlags().BoolVarP(&showBytes, "bytes", "b", false, "Display speed in bytes per second instead of bits per second")
+	RootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "Output the result as JSON")
 
 	RootCmd.PersistentFlags().MarkHidden("debug")
-	//TODO: Allow to estimate using time or size
 }
 
 func initLog() {
@@ -79,9 +85,11 @@ func run(cmd *cobra.Command, args []string) {
 		cli.Infoln(displayVersion)
 		os.Exit(0)
 	}
-	count := uint64(3)
 	fast.UseHTTPS = !notHTTPS
-	urls := fast.GetDlUrls(count)
+	urls, err := fast.GetDlUrls(dlCount)
+	if err != nil {
+		cli.Warnf("Could not get urls from fast.com: %v\n", err)
+	}
 	cli.Debugf("Got %d from fast service\n", len(urls))
 
 	if len(urls) == 0 {
@@ -89,10 +97,27 @@ func run(cmd *cobra.Command, args []string) {
 		urls = append(urls, fast.GetDefaultURL())
 	}
 
-	err := calculateBandwidth(urls)
+	err = calculateBandwidth(urls)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
 	}
+}
+
+// Result is the outcome of a bandwidth test, used for JSON output.
+type Result struct {
+	BitsPerSec  float64 `json:"bits_per_sec"`
+	BytesPerSec float64 `json:"bytes_per_sec"`
+	BytesRead   uint64  `json:"bytes_read"`
+	Seconds     float64 `json:"seconds"`
+	LatencyMs   float64 `json:"latency_ms"`
+}
+
+func formatSpeed(bytesPerSec float64) string {
+	if showBytes {
+		return format.BytesPerSec(bytesPerSec)
+	}
+	return format.BitsPerSec(bytesPerSec)
 }
 
 func calculateBandwidth(urls []string) (err error) {
@@ -104,6 +129,7 @@ func calculateBandwidth(urls []string) (err error) {
 	ch := make(chan *copyResults, 1)
 	bytesToRead := uint64(0)
 	completed := uint64(0)
+	var latency time.Duration
 
 	for i := uint64(0); i < count; i++ {
 		// Create the HTTP request
@@ -113,7 +139,8 @@ func calculateBandwidth(urls []string) (err error) {
 		}
 		request.Header.Set("User-Agent", displayVersion)
 
-		// Get the HTTP Response
+		// Get the HTTP Response, timing time-to-first-byte on the leading connection
+		requestStart := time.Now()
 		response, err := client.Do(request)
 		if err != nil {
 			return err
@@ -122,6 +149,9 @@ func calculateBandwidth(urls []string) (err error) {
 
 		// Set information for the leading index
 		if i == 0 {
+			latency = time.Since(requestStart)
+			cli.Debugf("Latency=%s\n", latency)
+
 			// Try to get content length
 			contentLength := response.Header.Get("Content-Length")
 			calculatedLength, err := strconv.Atoi(contentLength)
@@ -140,7 +170,8 @@ func calculateBandwidth(urls []string) (err error) {
 
 	}
 
-	if !simpleProgress {
+	showProgress := !simpleProgress && !jsonOutput
+	if showProgress {
 		cli.Infof("Estimating current download speed\n")
 	}
 	for {
@@ -152,20 +183,36 @@ func calculateBandwidth(urls []string) (err error) {
 			}
 
 			completed++
-			if !simpleProgress {
+			bandwidth := bandwidthMeter.Bandwidth()
+			switch {
+			case jsonOutput:
+				result := Result{
+					BitsPerSec:  bandwidth * 8,
+					BytesPerSec: bandwidth,
+					BytesRead:   bandwidthMeter.BytesRead(),
+					Seconds:     bandwidthMeter.Duration().Seconds(),
+					LatencyMs:   float64(latency.Microseconds()) / 1000,
+				}
+				encoded, err := json.Marshal(result)
+				if err != nil {
+					return err
+				}
+				fmt.Println(string(encoded))
+			case showProgress:
 				fmt.Printf("\r%s - %s",
-					format.BitsPerSec(bandwidthMeter.Bandwidth()),
+					formatSpeed(bandwidth),
 					format.Percent(primaryBandwidthReader.BytesRead(), bytesToRead))
 				fmt.Printf("  \n")
+				fmt.Printf("Latency: %.1f ms\n", float64(latency.Microseconds())/1000)
 				fmt.Printf("Completed in %.1f seconds\n", bandwidthMeter.Duration().Seconds())
-			} else {
-				fmt.Printf("%s\n", format.BitsPerSec(bandwidthMeter.Bandwidth()))
+			default:
+				fmt.Printf("%s\n", formatSpeed(bandwidth))
 			}
 			return nil
 		case <-time.After(100 * time.Millisecond):
-			if !simpleProgress {
+			if showProgress {
 				fmt.Printf("\r%s - %s",
-					format.BitsPerSec(bandwidthMeter.Bandwidth()),
+					formatSpeed(bandwidthMeter.Bandwidth()),
 					format.Percent(primaryBandwidthReader.BytesRead(), bytesToRead))
 			}
 		}
@@ -181,11 +228,4 @@ type copyResults struct {
 func asyncCopy(index uint64, channel chan *copyResults, writer io.Writer, reader io.Reader) {
 	bytesWritten, err := io.Copy(writer, reader)
 	channel <- &copyResults{index, uint64(bytesWritten), err}
-}
-
-func sumArr(array []uint64) (sum uint64) {
-	for i := 0; i < len(array); i++ {
-		sum = sum + array[i]
-	}
-	return
 }

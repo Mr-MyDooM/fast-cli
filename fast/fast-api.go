@@ -2,6 +2,7 @@ package fast
 
 import "fmt"
 import "bytes"
+import "encoding/json"
 import "net/http"
 import "net/url"
 import "io"
@@ -21,7 +22,7 @@ var httpClient = &http.Client{Timeout: 15 * time.Second}
 // responses, which are all small, known-shape pages/JSON, not test downloads.
 const maxScrapeBodyBytes = 5 * 1024 * 1024
 
-// allowedHosts restricts which hosts we'll ever issue a GET to when following
+// allowedDomains restricts which hosts we'll ever issue a GET to when following
 // data scraped out of fast.com's pages, so a compromised/spoofed response
 // can't be used to make this process request arbitrary internal or external
 // hosts (SSRF).
@@ -41,11 +42,44 @@ func isAllowedHost(rawURL string) bool {
 	return false
 }
 
-// GetDlUrls returns a list of urls to the fast api downloads
-func GetDlUrls(urlCount uint64) (urls []string, err error) {
+// Client describes the network fast.com sees this test running from.
+type Client struct {
+	IP      string
+	ISP     string
+	City    string
+	Country string
+}
+
+// Target is a single download endpoint fast.com assigned for this test.
+type Target struct {
+	URL     string
+	City    string
+	Country string
+}
+
+type location struct {
+	City    string `json:"city"`
+	Country string `json:"country"`
+}
+
+type speedtestConfig struct {
+	Client struct {
+		IP       string   `json:"ip"`
+		ISP      string   `json:"isp"`
+		Location location `json:"location"`
+	} `json:"client"`
+	Targets []struct {
+		URL      string   `json:"url"`
+		Location location `json:"location"`
+	} `json:"targets"`
+}
+
+// GetSpeedtestConfig fetches the client's network info and a list of
+// download targets from fast.com.
+func GetSpeedtestConfig(urlCount uint64) (client Client, targets []Target, err error) {
 	token, err := getFastToken()
 	if err != nil {
-		return nil, err
+		return client, nil, err
 	}
 
 	httpProtocol := "https"
@@ -53,29 +87,42 @@ func GetDlUrls(urlCount uint64) (urls []string, err error) {
 		httpProtocol = "http"
 	}
 
-	url := fmt.Sprintf("%s://api.fast.com/netflix/speedtest?https=%t&token=%s&urlCount=%d",
+	apiURL := fmt.Sprintf("%s://api.fast.com/netflix/speedtest/v2?https=%t&token=%s&urlCount=%d",
 		httpProtocol, UseHTTPS, token, urlCount)
-	cli.Debug("getting url list from %s", url)
+	cli.Debug("getting speedtest config from %s", apiURL)
 
-	jsonData, err := getPage(url)
+	jsonData, err := getPage(apiURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch fast.com url list: %w", err)
+		return client, nil, fmt.Errorf("failed to fetch fast.com speedtest config: %w", err)
 	}
 
-	re := regexp.MustCompile("(?U)\"url\":\"(.*)\"")
-	reUrls := re.FindAllStringSubmatch(jsonData, -1)
+	var config speedtestConfig
+	if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
+		return client, nil, fmt.Errorf("failed to parse fast.com speedtest config: %w", err)
+	}
 
-	cli.Debug("urls:")
-	for _, arr := range reUrls {
-		if !isAllowedHost(arr[1]) {
-			cli.Warn("ignoring download url with unexpected host: %s", arr[1])
+	client = Client{
+		IP:      config.Client.IP,
+		ISP:     config.Client.ISP,
+		City:    config.Client.Location.City,
+		Country: config.Client.Location.Country,
+	}
+
+	cli.Debug("targets:")
+	for _, t := range config.Targets {
+		if !isAllowedHost(t.URL) {
+			cli.Warn("ignoring download url with unexpected host: %s", t.URL)
 			continue
 		}
-		urls = append(urls, arr[1])
-		cli.Debug(" - %s", arr[1])
+		targets = append(targets, Target{
+			URL:     t.URL,
+			City:    t.Location.City,
+			Country: t.Location.Country,
+		})
+		cli.Debug(" - %s (%s, %s)", t.URL, t.Location.City, t.Location.Country)
 	}
 
-	return urls, nil
+	return client, targets, nil
 }
 
 // GetDefaultURL returns the fallback download URL
